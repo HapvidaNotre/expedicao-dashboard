@@ -176,6 +176,31 @@
     left:20px;
     font-size:11px;
     color:rgba(255,255,255,0.7);
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .live-dot{
+    display:none;
+    align-items:center;
+    gap:5px;
+    font-size:10px;
+    font-weight:700;
+    letter-spacing:0.5px;
+    color:#4ade80;
+  }
+  .live-dot.on{ display:inline-flex; }
+  .live-dot .pulse{
+    width:7px;height:7px;
+    border-radius:50%;
+    background:#4ade80;
+    box-shadow:0 0 0 rgba(74,222,128,0.6);
+    animation:pulseDot 1.6s infinite;
+  }
+  @keyframes pulseDot{
+    0%{ box-shadow:0 0 0 0 rgba(74,222,128,0.6); }
+    70%{ box-shadow:0 0 0 6px rgba(74,222,128,0); }
+    100%{ box-shadow:0 0 0 0 rgba(74,222,128,0); }
   }
 
   /* KPI ROW */
@@ -345,7 +370,10 @@
   </div>
 
   <div class="header">
-    <div class="updated-line" id="updatedLine">Atualizando…</div>
+    <div class="updated-line">
+      <span id="updatedLine">Atualizando…</span>
+      <span class="live-dot" id="liveDot"><span class="pulse"></span>AO VIVO</span>
+    </div>
     <div class="header-controls">
       <div class="icon-btn" title="Atualizar agora" onclick="loadData()">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
@@ -526,9 +554,22 @@
       <div class="field"><label>Produção por OP</label><input id="cellProducaoPorOp" type="text"><div class="preview" id="pvProducaoPorOp"></div></div>
     </div>
 
-    <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#33465e;margin-top:14px;">
-      <input type="checkbox" id="cfgAutoRefresh" style="width:15px;height:15px;"> Atualizar automaticamente a cada 5 minutos
-    </label>
+    <div class="field-row" style="margin-top:14px; align-items:end;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#33465e;">
+        <input type="checkbox" id="cfgAutoRefresh" style="width:15px;height:15px;"> Atualizar automaticamente
+      </label>
+      <div class="field">
+        <label>Intervalo</label>
+        <select id="cfgAutoRefreshInterval">
+          <option value="5000">A cada 5 segundos</option>
+          <option value="10000">A cada 10 segundos</option>
+          <option value="30000">A cada 30 segundos</option>
+          <option value="60000">A cada 1 minuto</option>
+          <option value="300000">A cada 5 minutos</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-note" style="margin-top:8px;">Intervalos muito curtos (5-10s) dão a sensação de atualização "ao vivo" enquanto você edita a planilha, mas fazem mais requisições ao Google Sheets. Se notar lentidão, aumente o intervalo.</div>
 
     <div class="modal-actions">
       <button class="btn ghost" onclick="restoreDefaults()">Restaurar padrão</button>
@@ -555,7 +596,8 @@ const DEFAULT_CONFIG = {
   cellMetaDia: 'E5',
   cellOpConferencia: 'F5',
   cellProducaoPorOp: 'G5',
-  autoRefresh: false
+  autoRefresh: true,
+  autoRefreshInterval: 10000
 };
 const STORAGE_KEY = 'expedicao_dashboard_config_v2';
 let barChart, donutChart, hbarChart;
@@ -672,7 +714,10 @@ function showError(show){
   document.getElementById('errorBanner').style.display = show ? 'block' : 'none';
 }
 
+let isLoadingData = false;
 async function loadData(){
+  if(isLoadingData) return; // evita empilhar requisições quando o intervalo de atualização é curto
+  isLoadingData = true;
   const cfg = getConfig();
   document.getElementById('updatedLine').textContent = 'Atualizando…';
 
@@ -686,6 +731,7 @@ async function loadData(){
     console.error('Falha ao buscar dados da planilha:', err);
     showError(true);
     document.getElementById('updatedLine').textContent = 'Falha ao atualizar';
+    isLoadingData = false;
     return;
   }
 
@@ -699,6 +745,7 @@ async function loadData(){
   }
   const now = new Date();
   document.getElementById('updatedLine').textContent = 'Última atualização: ' + now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  isLoadingData = false;
 }
 
 function render(table, cfg){
@@ -851,6 +898,7 @@ function openSettings(){
   document.getElementById('cellOpConferencia').value = cfg.cellOpConferencia;
   document.getElementById('cellProducaoPorOp').value = cfg.cellProducaoPorOp;
   document.getElementById('cfgAutoRefresh').checked = !!cfg.autoRefresh;
+  document.getElementById('cfgAutoRefreshInterval').value = cfg.autoRefreshInterval || 10000;
   updatePreviews();
   document.getElementById('overlay').style.display = 'flex';
 }
@@ -895,12 +943,15 @@ function restoreDefaults(){
   document.getElementById('cellMetaDia').value = cfg.cellMetaDia;
   document.getElementById('cellOpConferencia').value = cfg.cellOpConferencia;
   document.getElementById('cellProducaoPorOp').value = cfg.cellProducaoPorOp;
-  document.getElementById('cfgAutoRefresh').checked = false;
+  document.getElementById('cfgAutoRefresh').checked = !!cfg.autoRefresh;
+  document.getElementById('cfgAutoRefreshInterval').value = cfg.autoRefreshInterval || 10000;
   updatePreviews();
 }
-function setupAutoRefresh(enabled){
+function setupAutoRefresh(enabled, intervalMs){
   if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }
-  if(enabled){ autoTimer = setInterval(loadData, 5*60*1000); }
+  const ms = Math.max(3000, intervalMs || 10000); // nunca menos de 3s, para não sobrecarregar o Google Sheets
+  document.getElementById('liveDot').classList.toggle('on', !!enabled);
+  if(enabled){ autoTimer = setInterval(loadData, ms); }
 }
 function saveSettings(){
   const cfg = {
@@ -914,10 +965,11 @@ function saveSettings(){
     cellMetaDia: document.getElementById('cellMetaDia').value.trim(),
     cellOpConferencia: document.getElementById('cellOpConferencia').value.trim(),
     cellProducaoPorOp: document.getElementById('cellProducaoPorOp').value.trim(),
-    autoRefresh: document.getElementById('cfgAutoRefresh').checked
+    autoRefresh: document.getElementById('cfgAutoRefresh').checked,
+    autoRefreshInterval: parseInt(document.getElementById('cfgAutoRefreshInterval').value, 10)
   };
   setConfig(cfg);
-  setupAutoRefresh(cfg.autoRefresh);
+  setupAutoRefresh(cfg.autoRefresh, cfg.autoRefreshInterval);
   closeSettings();
   loadData();
 }
@@ -1005,7 +1057,7 @@ document.addEventListener('click', ()=>{ closeMonthPicker(); });
 document.addEventListener('DOMContentLoaded', ()=>{
   const cfg = getConfig();
   renderMonthBadge();
-  setupAutoRefresh(cfg.autoRefresh);
+  setupAutoRefresh(cfg.autoRefresh, cfg.autoRefreshInterval);
   loadData().then(()=>{ updatePreviews(); });
   ['cellMeta','cellRealizado','cellDiasUteis','cellFaltaTrabalhar','cellDiasTrabalhados','cellMetaDia','cellOpConferencia','cellProducaoPorOp','cfgSheetId','cfgGid'].forEach(id=>{
     const el = document.getElementById(id);
