@@ -62,15 +62,96 @@
     font-weight:800;
   }
   .header .badge{
-    display:inline-block;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
     background:rgba(255,255,255,0.14);
     border:1px solid rgba(255,255,255,0.35);
-    padding:6px 22px;
+    padding:6px 18px;
     border-radius:999px;
     font-weight:700;
     letter-spacing:1px;
     font-size:14px;
     text-transform:uppercase;
+    cursor:pointer;
+    user-select:none;
+    transition:background .15s;
+  }
+  .header .badge:hover{
+    background:rgba(255,255,255,0.24);
+  }
+  .header .badge svg{
+    width:13px;height:13px;
+    opacity:0.85;
+    flex-shrink:0;
+  }
+  .month-picker-wrap{
+    position:relative;
+    display:inline-block;
+  }
+  .month-picker{
+    position:absolute;
+    top:calc(100% + 10px);
+    left:50%;
+    transform:translateX(-50%);
+    background:#ffffff;
+    color:#0b2545;
+    border-radius:12px;
+    box-shadow:0 12px 28px rgba(0,0,0,0.28);
+    padding:14px;
+    width:250px;
+    z-index:50;
+    text-align:left;
+    text-transform:none;
+    letter-spacing:normal;
+    font-weight:400;
+    cursor:default;
+  }
+  .month-picker.hidden{ display:none; }
+  .month-picker .mp-title{
+    font-size:12px;
+    font-weight:700;
+    color:#5b6b82;
+    margin-bottom:8px;
+    letter-spacing:0.4px;
+    text-transform:uppercase;
+  }
+  .month-picker .mp-row{
+    display:flex;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .month-picker select{
+    flex:1;
+    padding:8px 8px;
+    border-radius:8px;
+    border:1px solid #d8dee8;
+    font-size:14px;
+    font-family:inherit;
+    background:#f6f8fb;
+    color:#0b2545;
+  }
+  .month-picker .mp-actions{
+    display:flex;
+    justify-content:flex-end;
+    gap:8px;
+  }
+  .month-picker button{
+    border:none;
+    border-radius:8px;
+    padding:7px 14px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .month-picker .mp-cancel{
+    background:#eef1f6;
+    color:#3a4658;
+  }
+  .month-picker .mp-apply{
+    background:#0b2545;
+    color:#fff;
   }
   .header-controls{
     position:absolute;
@@ -217,6 +298,16 @@
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
   .field-row.full{grid-template-columns:1fr;}
   .field{display:flex;flex-direction:column;gap:4px;}
+  .field-note{
+    grid-column:1 / -1;
+    font-size:12.5px;
+    color:#5b6b82;
+    background:#f3f6fa;
+    border:1px solid #e1e7ef;
+    border-radius:8px;
+    padding:10px 12px;
+    line-height:1.4;
+  }
   .field label{font-size:11.5px;font-weight:700;color:#33465e;}
   .field input{
     border:1px solid #cbd5e3;border-radius:7px;padding:7px 9px;font-size:13px;
@@ -264,7 +355,23 @@
       </div>
     </div>
     <h1>EXPEDIÇÃO – RESULTADO OPERACIONAL</h1>
-    <div class="badge" id="monthBadge">—</div>
+    <div class="month-picker-wrap">
+      <div class="badge" id="monthBadge" onclick="toggleMonthPicker(event)">
+        <span id="monthBadgeText">—</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="month-picker hidden" id="monthPicker" onclick="event.stopPropagation()">
+        <div class="mp-title">Mês de referência</div>
+        <div class="mp-row">
+          <select id="mpMonth"></select>
+          <select id="mpYear"></select>
+        </div>
+        <div class="mp-actions">
+          <button type="button" class="mp-cancel" onclick="closeMonthPicker()">Cancelar</button>
+          <button type="button" class="mp-apply" onclick="applyMonthPicker()">Aplicar</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- KPI CARDS -->
@@ -404,7 +511,7 @@
 
     <div class="section-title">Indicadores principais</div>
     <div class="cells-grid">
-      <div class="field"><label>Mês (célula de texto, ex: A1)</label><input id="cellMes" type="text"><div class="preview" id="pvMes"></div></div>
+      <div class="field-note">O mês exibido no topo agora é escolhido diretamente no cabeçalho do dashboard (clique no seletor de mês/ano ao lado do título) e não depende mais de uma célula da planilha.</div>
       <div class="field"><label>Meta do Mês (peças)</label><input id="cellMeta" type="text"><div class="preview" id="pvMeta"></div></div>
       <div class="field"><label>Produção Realizada</label><input id="cellRealizado" type="text"><div class="preview" id="pvRealizado"></div></div>
     </div>
@@ -440,7 +547,6 @@
 const DEFAULT_CONFIG = {
   sheetId: '1QD1PmKUbZxD9D5t6JkKB_YHKEnMcUIIC',
   gid: '625542953',
-  cellMes: 'A1',
   cellMeta: 'C2',
   cellRealizado: 'D3',
   cellDiasUteis: 'A5',
@@ -596,8 +702,6 @@ async function loadData(){
 }
 
 function render(table, cfg){
-  const monthText = getText(table, cfg.cellMes) || '—';
-  document.getElementById('monthBadge').textContent = monthText;
 
   const meta = getNumber(table, cfg.cellMeta) ?? 0;
   const realizado = getNumber(table, cfg.cellRealizado) ?? 0;
@@ -738,7 +842,6 @@ function openSettings(){
   const cfg = getConfig();
   document.getElementById('cfgSheetId').value = cfg.sheetId;
   document.getElementById('cfgGid').value = cfg.gid;
-  document.getElementById('cellMes').value = cfg.cellMes;
   document.getElementById('cellMeta').value = cfg.cellMeta;
   document.getElementById('cellRealizado').value = cfg.cellRealizado;
   document.getElementById('cellDiasUteis').value = cfg.cellDiasUteis;
@@ -757,7 +860,6 @@ function closeSettings(){
 function updatePreviews(){
   if(!lastTable) return;
   const map = [
-    ['cellMes','pvMes','text'],
     ['cellMeta','pvMeta','num'],
     ['cellRealizado','pvRealizado','num'],
     ['cellDiasUteis','pvDiasUteis','num'],
@@ -775,7 +877,7 @@ function updatePreviews(){
     else { pvEl.textContent = 'valor atual: '+val; pvEl.classList.remove('err'); }
   });
 }
-['cellMes','cellMeta','cellRealizado','cellDiasUteis','cellFaltaTrabalhar','cellDiasTrabalhados','cellMetaDia','cellOpConferencia','cellProducaoPorOp'].forEach(id=>{
+['cellMeta','cellRealizado','cellDiasUteis','cellFaltaTrabalhar','cellDiasTrabalhados','cellMetaDia','cellOpConferencia','cellProducaoPorOp'].forEach(id=>{
   document.addEventListener('DOMContentLoaded', ()=>{
     const el = document.getElementById(id);
     if(el) el.addEventListener('input', updatePreviews);
@@ -785,7 +887,6 @@ function restoreDefaults(){
   const cfg = Object.assign({}, DEFAULT_CONFIG);
   document.getElementById('cfgSheetId').value = cfg.sheetId;
   document.getElementById('cfgGid').value = cfg.gid;
-  document.getElementById('cellMes').value = cfg.cellMes;
   document.getElementById('cellMeta').value = cfg.cellMeta;
   document.getElementById('cellRealizado').value = cfg.cellRealizado;
   document.getElementById('cellDiasUteis').value = cfg.cellDiasUteis;
@@ -805,7 +906,6 @@ function saveSettings(){
   const cfg = {
     sheetId: document.getElementById('cfgSheetId').value.trim(),
     gid: document.getElementById('cfgGid').value.trim(),
-    cellMes: document.getElementById('cellMes').value.trim(),
     cellMeta: document.getElementById('cellMeta').value.trim(),
     cellRealizado: document.getElementById('cellRealizado').value.trim(),
     cellDiasUteis: document.getElementById('cellDiasUteis').value.trim(),
@@ -822,12 +922,92 @@ function saveSettings(){
   loadData();
 }
 
+/* ---- Seletor de mês/ano do cabeçalho (não depende da planilha) ---- */
+const MONTH_STORAGE_KEY = 'expedicao_dashboard_month_v1';
+const MESES_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+function getSelectedMonth(){
+  try{
+    const raw = localStorage.getItem(MONTH_STORAGE_KEY);
+    if(raw){
+      const parsed = JSON.parse(raw);
+      if(Number.isInteger(parsed.month) && Number.isInteger(parsed.year)){
+        return parsed;
+      }
+    }
+  }catch(e){ /* ignora e usa o mês atual como padrão */ }
+  const now = new Date();
+  return { month: now.getMonth(), year: now.getFullYear() };
+}
+
+function setSelectedMonth(month, year){
+  localStorage.setItem(MONTH_STORAGE_KEY, JSON.stringify({ month, year }));
+}
+
+function renderMonthBadge(){
+  const { month, year } = getSelectedMonth();
+  document.getElementById('monthBadgeText').textContent = MESES_PT[month] + '/' + year;
+}
+
+function populateMonthPickerOptions(){
+  const monthSel = document.getElementById('mpMonth');
+  const yearSel = document.getElementById('mpYear');
+  if(monthSel.options.length === 0){
+    MESES_PT.forEach((nome, i)=>{
+      const opt = document.createElement('option');
+      opt.value = i;
+      opt.textContent = nome;
+      monthSel.appendChild(opt);
+    });
+  }
+  if(yearSel.options.length === 0){
+    const nowYear = new Date().getFullYear();
+    for(let y = nowYear - 3; y <= nowYear + 3; y++){
+      const opt = document.createElement('option');
+      opt.value = y;
+      opt.textContent = y;
+      yearSel.appendChild(opt);
+    }
+  }
+  const current = getSelectedMonth();
+  monthSel.value = current.month;
+  yearSel.value = current.year;
+}
+
+function toggleMonthPicker(e){
+  e.stopPropagation();
+  const picker = document.getElementById('monthPicker');
+  const isHidden = picker.classList.contains('hidden');
+  if(isHidden){
+    populateMonthPickerOptions();
+    picker.classList.remove('hidden');
+  } else {
+    picker.classList.add('hidden');
+  }
+}
+
+function closeMonthPicker(){
+  document.getElementById('monthPicker').classList.add('hidden');
+}
+
+function applyMonthPicker(){
+  const month = parseInt(document.getElementById('mpMonth').value, 10);
+  const year = parseInt(document.getElementById('mpYear').value, 10);
+  setSelectedMonth(month, year);
+  renderMonthBadge();
+  closeMonthPicker();
+}
+
+// Fecha o seletor ao clicar fora dele
+document.addEventListener('click', ()=>{ closeMonthPicker(); });
+
 // init
 document.addEventListener('DOMContentLoaded', ()=>{
   const cfg = getConfig();
+  renderMonthBadge();
   setupAutoRefresh(cfg.autoRefresh);
   loadData().then(()=>{ updatePreviews(); });
-  ['cellMes','cellMeta','cellRealizado','cellDiasUteis','cellFaltaTrabalhar','cellDiasTrabalhados','cellMetaDia','cellOpConferencia','cellProducaoPorOp','cfgSheetId','cfgGid'].forEach(id=>{
+  ['cellMeta','cellRealizado','cellDiasUteis','cellFaltaTrabalhar','cellDiasTrabalhados','cellMetaDia','cellOpConferencia','cellProducaoPorOp','cfgSheetId','cfgGid'].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.addEventListener('input', updatePreviews);
   });
